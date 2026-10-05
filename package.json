@@ -9,7 +9,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/app.js",
-    "db:check": "node src/db/checkConnection.js"
+    "db:check": "node src/db/checkConnection.js",
+    "repo:check": "node src/repositories/checkLoadRepository.js"
   },
   "repository": {
     "type": "git",
