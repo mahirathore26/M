@@ -10,7 +10,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/app.js",
     "db:check": "node src/db/checkConnection.js",
-    "repo:check": "node src/repositories/checkLoadRepository.js"
+    "repo:check": "node src/repositories/checkLoadRepository.js",
+    "rate:check": "node --env-file=.env src/repositories/checkRateRepository.js"
   },
   "repository": {
     "type": "git",
