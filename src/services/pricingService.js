@@ -25,6 +25,8 @@ function assertFiniteNonNegative(value, label) {
   }
 }
 
+export const DEFAULT_FUEL_SURCHARGE_RATE = 0.10;
+
 /**
  * @param {object} params
  * @param {number} params.baseRate
@@ -34,7 +36,7 @@ function assertFiniteNonNegative(value, label) {
  */
 export function calculateQuote({
   baseRate,
-  fuelSurchargeRate = 0.10,
+  fuelSurchargeRate = DEFAULT_FUEL_SURCHARGE_RATE,
   accessorialCharges = [],
 }) {
   assertFiniteNonNegative(baseRate, 'baseRate');
