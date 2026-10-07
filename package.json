@@ -11,7 +11,8 @@
     "start": "node src/app.js",
     "db:check": "node src/db/checkConnection.js",
     "repo:check": "node src/repositories/checkLoadRepository.js",
-    "rate:check": "node --env-file=.env src/repositories/checkRateRepository.js"
+    "rate:check": "node --env-file=.env src/repositories/checkRateRepository.js",
+    "quote:check": "node --env-file=.env src/repositories/checkQuoteRepository.js"
   },
   "repository": {
     "type": "git",
