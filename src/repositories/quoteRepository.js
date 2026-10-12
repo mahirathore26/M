@@ -40,14 +40,14 @@ export async function createQuote({
   totalAmount,
   validUntil,
   calculationSnapshot,
-}) {
+}, db = pool) {
   requirePositiveInt(loadId, "loadId");
   requirePositiveInt(carrierId, "carrierId");
   requirePositiveInt(truckId, "truckId");
   requirePositiveInt(rateCardId, "rateCardId");
 
   const sql = await fs.readFile(SQL_CREATE_QUOTE, "utf8");
-  const result = await pool.query(sql, [
+  const result = await db.query(sql, [
     loadId,
     carrierId,
     truckId,
