@@ -41,8 +41,26 @@ function makeQuoteInputs(overrides = {}) {
   };
 }
 
-function makeDeps(overrides = {}) {
+function makeClient() {
+  const commands = [];
+  let released = false;
   return {
+    commands,
+    get released() { return released; },
+    async query(sql) { commands.push(sql); return { rows: [] }; },
+    release() { released = true; },
+  };
+}
+
+function makePool(client) {
+  return { async connect() { return client; } };
+}
+
+function makeDeps(overrides = {}) {
+  const client = makeClient();
+  return {
+    pool: makePool(client),
+    _client: client,
     findEligibleTrucks: async () => [],
     getQuoteInputs: async () => [makeQuoteInputs()],
     createQuote: async (params) => ({ quote_id: 1, ...params }),
@@ -205,5 +223,77 @@ describe('generateQuotesForLoad', () => {
     assert.equal(capturedSnapshot.fuelSurcharge, '3800.00');
     assert.equal(capturedSnapshot.accessorialCharges, '0.00');
     assert.equal(capturedSnapshot.totalAmount, '41800.00');
+  });
+  it('commits transaction after all quotes are inserted', async () => {
+    const trucks = [
+      makeTruck({ truck_id: 10, applicable_rate_card_id: 200 }),
+      makeTruck({ truck_id: 20, applicable_rate_card_id: 201 }),
+    ];
+    const clientsReceived = [];
+    const deps = makeDeps({
+      findEligibleTrucks: async () => trucks,
+      getQuoteInputs: async (_loadId, truckId, rateCardId) => [
+        makeQuoteInputs({ truck_id: truckId, rate_card_id: rateCardId }),
+      ],
+      createQuote: async (params, db) => {
+        clientsReceived.push(db);
+        return { quote_id: clientsReceived.length, ...params };
+      },
+    });
+
+    await generateQuotesForLoad(1, VALID_UNTIL, {}, deps);
+
+    assert.ok(deps._client.commands.includes('BEGIN'));
+    assert.ok(deps._client.commands.includes('COMMIT'));
+    assert.ok(!deps._client.commands.includes('ROLLBACK'));
+    assert.ok(deps._client.released);
+
+    assert.equal(clientsReceived.length, 2);
+    assert.ok(clientsReceived.every((c) => c === deps._client));
+  });
+
+  it('rolls back and rethrows when a later insertion fails, preventing partial commit', async () => {
+    const trucks = [
+      makeTruck({ truck_id: 10, applicable_rate_card_id: 200 }),
+      makeTruck({ truck_id: 20, applicable_rate_card_id: 201 }),
+    ];
+
+    let insertCount = 0;
+    const deps = makeDeps({
+      findEligibleTrucks: async () => trucks,
+      getQuoteInputs: async (_loadId, truckId, rateCardId) => [
+        makeQuoteInputs({ truck_id: truckId, rate_card_id: rateCardId }),
+      ],
+      createQuote: async () => {
+        insertCount += 1;
+        if (insertCount === 2) throw new Error('DB constraint violation');
+        return { quote_id: insertCount };
+      },
+    });
+
+    await assert.rejects(
+      () => generateQuotesForLoad(1, VALID_UNTIL, {}, deps),
+      { message: 'DB constraint violation' },
+    );
+
+    assert.equal(insertCount, 2);
+    assert.ok(deps._client.commands.includes('ROLLBACK'));
+    assert.ok(!deps._client.commands.includes('COMMIT'));
+    assert.ok(deps._client.released);
+  });
+
+  it('releases the client even when an insertion throws', async () => {
+    const truck = makeTruck();
+    const deps = makeDeps({
+      findEligibleTrucks: async () => [truck],
+      createQuote: async () => { throw new Error('unexpected failure'); },
+    });
+
+    await assert.rejects(
+      () => generateQuotesForLoad(1, VALID_UNTIL, {}, deps),
+      { message: 'unexpected failure' },
+    );
+
+    assert.ok(deps._client.released);
   });
 });
