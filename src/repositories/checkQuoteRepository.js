@@ -102,16 +102,16 @@ async function checkQuoteRepository() {
     // ---- D. getQuoteById — structural verification ----
 
     console.log("D. getQuoteById(999999) — non-existent quote");
-    const rowsD = await getQuoteById(999999);
-    console.log(`   Returned ${rowsD.length} row(s).`);
+    const quoteD = await getQuoteById(999999);
+    console.log(`   Returned ${quoteD}.`);
 
-    if (rowsD.length !== 0) {
+    if (quoteD !== null) {
       throw new Error(
-        `D: Expected 0 rows for non-existent quote_id, got ${rowsD.length}.`
+        `D: Expected null for non-existent quote_id, got ${quoteD}.`
       );
     }
 
-    console.log("   ✔  Passed (zero rows for non-existent ID)\n");
+    console.log("   ✔  Passed (null for non-existent ID)\n");
 
     // ---- E. listQuotesForLoad(1) — no quotes created yet ----
 
