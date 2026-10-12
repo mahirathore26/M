@@ -13,6 +13,7 @@ target_load AS (
         weight_kg
     FROM loads
     WHERE load_id = $1
+      AND status IN ('OPEN', 'QUOTED')
 ),
 
 -- 2. CANDIDATE TRUCK FILTERING & 3. ALL-CAPABILITY MATCHING
