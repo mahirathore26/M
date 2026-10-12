@@ -7,12 +7,13 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "node --test src/**/*.test.js",
+    "test": "node --env-file=.env --test src/**/*.test.js",
     "start": "node src/app.js",
     "db:check": "node src/db/checkConnection.js",
     "repo:check": "node src/repositories/checkLoadRepository.js",
     "rate:check": "node --env-file=.env src/repositories/checkRateRepository.js",
-    "quote:check": "node --env-file=.env src/repositories/checkQuoteRepository.js"
+    "quote:check": "node --env-file=.env src/repositories/checkQuoteRepository.js",
+    "book:check": "node --env-file=.env src/repositories/checkBookingRepository.js"
   },
   "repository": {
     "type": "git",
