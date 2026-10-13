@@ -60,7 +60,16 @@ export async function createQuote({
     calculationSnapshot,
   ]);
 
-  return result.rows[0];
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    ...row,
+    quote_id: Number(row.quote_id),
+    load_id: Number(row.load_id),
+    carrier_id: Number(row.carrier_id),
+    truck_id: Number(row.truck_id),
+    rate_card_id: Number(row.rate_card_id),
+  };
 }
 
 export async function getQuoteById(quoteId, db = pool) {
@@ -68,15 +77,33 @@ export async function getQuoteById(quoteId, db = pool) {
 
   const sql = await fs.readFile(SQL_GET_QUOTE_BY_ID, "utf8");
   const result = await db.query(sql, [quoteId]);
+  const row = result.rows[0];
+  if (!row) return null;
 
-  return result.rows[0] ?? null;
+  return {
+    ...row,
+    quote_id: Number(row.quote_id),
+    load_id: Number(row.load_id),
+    carrier_id: Number(row.carrier_id),
+    truck_id: Number(row.truck_id),
+    rate_card_id: Number(row.rate_card_id),
+    ...(row.lane_id ? { lane_id: Number(row.lane_id) } : {}),
+  };
 }
 
-export async function listQuotesForLoad(loadId) {
+export async function listQuotesForLoad(loadId, db = pool) {
   requirePositiveInt(loadId, "loadId");
 
   const sql = await fs.readFile(SQL_LIST_QUOTES_FOR_LOAD, "utf8");
-  const result = await pool.query(sql, [loadId]);
+  const result = await db.query(sql, [loadId]);
 
-  return result.rows;
+  return result.rows.map((row) => ({
+    ...row,
+    quote_id: Number(row.quote_id),
+    load_id: Number(row.load_id),
+    carrier_id: Number(row.carrier_id),
+    truck_id: Number(row.truck_id),
+    rate_card_id: Number(row.rate_card_id),
+  }));
 }
+
