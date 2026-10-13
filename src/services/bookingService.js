@@ -12,13 +12,25 @@ import {
   updateLoadStatus as defaultUpdateLoadStatus,
 } from "../repositories/bookingTransactionRepository.js";
 
+import {
+  BadRequestError,
+  NotFoundError,
+  ConflictError,
+} from "../errors/AppError.js";
+
 function toDateString(val) {
+  if (val instanceof Date) {
+    const year = val.getFullYear();
+    const month = String(val.getMonth() + 1).padStart(2, "0");
+    const day = String(val.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
   return typeof val === "string" ? val.slice(0, 10) : String(val);
 }
 
 export async function bookQuote(quoteId, deps = {}) {
   if (!Number.isInteger(quoteId) || quoteId <= 0) {
-    throw new Error("quoteId must be a positive integer.");
+    throw new BadRequestError("quoteId must be a positive integer.");
   }
 
   const currentPool = deps.pool ?? pool;
@@ -40,63 +52,66 @@ export async function bookQuote(quoteId, deps = {}) {
     const quote = await getQuoteById(quoteId, client);
 
     if (!quote) {
-      throw new Error(`Quote ${quoteId} not found.`);
+      throw new NotFoundError(`Quote ${quoteId} not found.`);
     }
 
     if (quote.status !== "ACTIVE") {
-      throw new Error(`Quote ${quoteId} is not ACTIVE (status: ${quote.status}).`);
+      throw new ConflictError(`Quote ${quoteId} is not ACTIVE (status: ${quote.status}).`, `Quote ${quoteId} is not active.`);
     }
 
     const validUntilVal = quote.quote_valid_until ?? quote.valid_until;
     if (!validUntilVal) {
-      throw new Error(`Quote ${quoteId} has invalid valid_until.`);
+      throw new ConflictError(`Quote ${quoteId} has invalid valid_until.`, `Quote ${quoteId} has invalid valid_until.`);
     }
 
     const validUntil = new Date(validUntilVal);
     if (Number.isNaN(validUntil.getTime())) {
-      throw new Error(`Quote ${quoteId} has invalid valid_until.`);
+      throw new ConflictError(`Quote ${quoteId} has invalid valid_until.`, `Quote ${quoteId} has invalid valid_until.`);
     }
 
     const now = deps.now ? new Date(deps.now) : new Date();
     if (validUntil <= now) {
-      throw new Error(`Quote ${quoteId} has expired.`);
+      throw new ConflictError(`Quote ${quoteId} has expired.`, `Quote ${quoteId} has expired.`);
     }
 
     if (!quote.delivery_date) {
-      throw new Error(`Load ${quote.load_id} does not have a delivery_date.`);
+      throw new BadRequestError(`Load ${quote.load_id} does not have a delivery_date.`, `Load does not have a delivery date.`);
     }
 
-    await lockBookingResources(quote.load_id, quote.truck_id, client);
+    const loadId = Number(quote.load_id);
+    const truckId = Number(quote.truck_id);
 
-    const activeBookings = await getActiveBookingForLoad(quote.load_id, client);
+    await lockBookingResources(loadId, truckId, client);
+
+    const activeBookings = await getActiveBookingForLoad(loadId, client);
     if (activeBookings && activeBookings.length > 0) {
-      throw new Error(`Load ${quote.load_id} already has an active booking.`);
+      throw new ConflictError(`Load ${loadId} already has an active booking.`, `Load already has an active booking.`);
     }
 
     const pickupDateStr = toDateString(quote.pickup_date);
     const deliveryDateStr = toDateString(quote.delivery_date);
 
     const truckConflicts = await getTruckBookingConflicts(
-      quote.truck_id,
+      truckId,
       pickupDateStr,
       deliveryDateStr,
       client
     );
     if (truckConflicts && truckConflicts.length > 0) {
-      throw new Error(`Truck ${quote.truck_id} has an overlapping booking conflict.`);
+      throw new ConflictError(`Truck ${truckId} has an overlapping booking conflict.`, `Truck has an overlapping booking conflict.`);
     }
 
     const newBooking = await createBooking({ quoteId }, client);
-    createdBookingId = newBooking.booking_id;
+    createdBookingId = Number(newBooking.booking_id);
 
     const updatedQuote = await updateQuoteStatus(quoteId, "ACCEPTED", client);
     if (!updatedQuote) {
       throw new Error(`Failed to update quote ${quoteId} status to ACCEPTED.`);
     }
 
-    const updatedLoad = await updateLoadStatus(quote.load_id, "BOOKED", client);
+    const updatedLoad = await updateLoadStatus(loadId, "BOOKED", client);
     if (!updatedLoad) {
-      throw new Error(`Failed to update load ${quote.load_id} status to BOOKED.`);
+      throw new Error(`Failed to update load ${loadId} status to BOOKED.`);
     }
 
     await client.query("COMMIT");
