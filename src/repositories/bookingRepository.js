@@ -54,12 +54,24 @@ export async function createBooking({ quoteId }, db = pool) {
   requirePositiveInt(quoteId, "quoteId");
   const sql = await fs.readFile(SQL_CREATE_BOOKING, "utf8");
   const result = await db.query(sql, [quoteId]);
-  return result.rows[0];
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    ...row,
+    booking_id: Number(row.booking_id),
+    quote_id: Number(row.quote_id),
+  };
 }
 
 export async function getBookingById(bookingId, db = pool) {
   requirePositiveInt(bookingId, "bookingId");
   const sql = await fs.readFile(SQL_GET_BOOKING_BY_ID, "utf8");
   const result = await db.query(sql, [bookingId]);
-  return result.rows[0] ?? null;
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    ...row,
+    booking_id: Number(row.booking_id),
+    quote_id: Number(row.quote_id),
+  };
 }
