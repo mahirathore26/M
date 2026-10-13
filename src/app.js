@@ -1,4 +1,8 @@
 import express from 'express';
+import laneRoutes from './routes/laneRoutes.js';
+import loadRoutes from './routes/loadRoutes.js';
+import quoteRoutes from './routes/quoteRoutes.js';
+import bookingRoutes from './routes/bookingRoutes.js';
 
 const app = express();
 
@@ -7,6 +11,11 @@ app.use(express.json());
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'freight-rate-engine' });
 });
+
+app.use('/api/lanes', laneRoutes);
+app.use('/api/loads', loadRoutes);
+app.use('/api/quotes', quoteRoutes);
+app.use('/api/bookings', bookingRoutes);
 
 // 404 handler for unknown routes
 app.use((_req, res) => {
