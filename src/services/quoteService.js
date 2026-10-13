@@ -1,7 +1,11 @@
 import pool from '../db/pool.js';
-import { findEligibleTrucks as defaultFindEligibleTrucks } from '../repositories/loadRepository.js';
+import {
+  findEligibleTrucks as defaultFindEligibleTrucks,
+  getLoadById as defaultGetLoadById,
+} from '../repositories/loadRepository.js';
 import { getQuoteInputs as defaultGetQuoteInputs, createQuote as defaultCreateQuote } from '../repositories/quoteRepository.js';
 import { calculateQuote as defaultCalculateQuote, DEFAULT_FUEL_SURCHARGE_RATE } from './pricingService.js';
+import { BadRequestError, NotFoundError } from '../errors/AppError.js';
 
 /**
  * Generates quotes for all eligible trucks on a load.
@@ -19,10 +23,10 @@ export async function generateQuotesForLoad(
   deps = {},
 ) {
   if (!Number.isInteger(loadId) || loadId <= 0) {
-    throw new Error('loadId must be a positive integer');
+    throw new BadRequestError('loadId must be a positive integer');
   }
   if (validUntil == null) {
-    throw new Error('validUntil is required');
+    throw new BadRequestError('validUntil is required');
   }
 
   const findEligibleTrucks = deps.findEligibleTrucks ?? defaultFindEligibleTrucks;
@@ -45,10 +49,14 @@ export async function generateQuotesForLoad(
     const quotes = [];
 
     for (const truck of eligibleTrucks) {
+      const truckId = Number(truck.truck_id);
+      const rateCardId = Number(truck.applicable_rate_card_id);
+      const carrierId = Number(truck.carrier_id);
+
       const [inputs] = await getQuoteInputs(
         loadId,
-        truck.truck_id,
-        truck.applicable_rate_card_id,
+        truckId,
+        rateCardId,
       );
 
       if (!inputs) {
@@ -75,9 +83,9 @@ export async function generateQuotesForLoad(
 
       const quote = await createQuote({
         loadId,
-        carrierId: truck.carrier_id,
-        truckId: truck.truck_id,
-        rateCardId: truck.applicable_rate_card_id,
+        carrierId,
+        truckId,
+        rateCardId,
         baseRate: pricing.baseRate,
         fuelSurcharge: pricing.fuelSurcharge,
         accessorialCharges: pricing.accessorialCharges,
@@ -98,3 +106,21 @@ export async function generateQuotesForLoad(
     client.release();
   }
 }
+
+export async function requestQuotesForLoad(loadId, deps = {}) {
+  if (!Number.isInteger(loadId) || loadId <= 0) {
+    throw new BadRequestError('loadId must be a positive integer.');
+  }
+
+  const getLoadById = deps.getLoadById ?? defaultGetLoadById;
+  const load = await getLoadById(loadId);
+  if (!load) {
+    throw new NotFoundError(`Load ${loadId} not found.`);
+  }
+
+  const now = deps.now ? new Date(deps.now) : new Date();
+  const validUntil = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
+
+  return await generateQuotesForLoad(loadId, validUntil, {}, deps);
+}
+
