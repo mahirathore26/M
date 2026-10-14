@@ -18,13 +18,13 @@ function requirePositiveInt(value, name) {
   }
 }
 
-export async function getQuoteInputs(loadId, truckId, rateCardId) {
+export async function getQuoteInputs(loadId, truckId, rateCardId, db = pool) {
   requirePositiveInt(loadId, "loadId");
   requirePositiveInt(truckId, "truckId");
   requirePositiveInt(rateCardId, "rateCardId");
 
   const sql = await fs.readFile(SQL_GET_QUOTE_INPUTS, "utf8");
-  const result = await pool.query(sql, [loadId, truckId, rateCardId]);
+  const result = await db.query(sql, [loadId, truckId, rateCardId]);
 
   return result.rows;
 }

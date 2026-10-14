@@ -57,6 +57,7 @@ export async function generateQuotesForLoad(
         loadId,
         truckId,
         rateCardId,
+        client,
       );
 
       if (!inputs) {
