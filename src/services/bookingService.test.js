@@ -214,8 +214,8 @@ describe("bookingService - bookQuote", () => {
         pickup_date: "2026-10-15",
         delivery_date: "2026-10-16",
       }),
-      lockBookingResources: async (loadId, truckId, c) => {
-        callOrder.push({ fn: "lockBookingResources", loadId, truckId, client: c });
+      lockBookingResources: async (qId, c) => {
+        callOrder.push({ fn: "lockBookingResources", quoteId: qId, client: c });
       },
       getActiveBookingForLoad: async (loadId, c) => {
         callOrder.push({ fn: "getActiveBookingForLoad", loadId, client: c });
@@ -238,8 +238,7 @@ describe("bookingService - bookQuote", () => {
     await bookQuote(1, deps);
 
     assert.equal(callOrder[0].fn, "lockBookingResources");
-    assert.equal(callOrder[0].loadId, 10);
-    assert.equal(callOrder[0].truckId, 20);
+    assert.equal(callOrder[0].quoteId, 1);
     assert.equal(callOrder[0].client, client);
 
     assert.equal(callOrder[1].fn, "getActiveBookingForLoad");
@@ -266,8 +265,8 @@ describe("bookingService - bookQuote", () => {
         pickup_date: "2026-10-15",
         delivery_date: "2026-10-16",
       }),
-      lockBookingResources: async (loadId, truckId) => {
-        lockedResources = { loadId, truckId };
+      lockBookingResources: async (qId) => {
+        lockedResources = { quoteId: qId };
       },
       getActiveBookingForLoad: async () => [],
       getTruckBookingConflicts: async () => [],
@@ -300,7 +299,7 @@ describe("bookingService - bookQuote", () => {
       booking_status: "CONFIRMED",
       load_id: 10,
     });
-    assert.deepEqual(lockedResources, { loadId: 10, truckId: 20 });
+    assert.deepEqual(lockedResources, { quoteId: 1 });
     assert.deepEqual(quoteStatusUpdated, { quoteId: 1, status: "ACCEPTED" });
     assert.deepEqual(loadStatusUpdated, { loadId: 10, status: "BOOKED" });
     assert.equal(client.queries.some((q) => q.sql === "BEGIN"), true);
@@ -333,6 +332,94 @@ describe("bookingService - bookQuote", () => {
     };
 
     await assert.rejects(bookQuote(1, deps), { message: /DB write error/ });
+    assert.equal(client.queries.some((q) => q.sql === "ROLLBACK"), true);
+    assert.equal(client.released, true);
+  });
+
+  test("rejects if quote status changes to non-ACTIVE while waiting for lock", async () => {
+    const client = createMockClient();
+    const pool = createMockPool(client);
+
+    let getQuoteCount = 0;
+    const deps = {
+      pool,
+      now: "2026-10-10T00:00:00Z",
+      getQuoteById: async () => {
+        getQuoteCount++;
+        return {
+          quote_id: 1,
+          status: getQuoteCount === 1 ? "ACTIVE" : "ACCEPTED",
+          valid_until: "2026-10-20T00:00:00Z",
+          load_id: 10,
+          truck_id: 20,
+          pickup_date: "2026-10-15",
+          delivery_date: "2026-10-16",
+        };
+      },
+      lockBookingResources: async () => [{ quote_id: 1, load_id: 10, truck_id: 20 }],
+      getActiveBookingForLoad: async () => [],
+      getTruckBookingConflicts: async () => [],
+      createBooking: async () => ({ booking_id: 100 }),
+    };
+
+    await assert.rejects(bookQuote(1, deps), { message: /not ACTIVE/ });
+    assert.equal(getQuoteCount, 2);
+    assert.equal(client.queries.some((q) => q.sql === "ROLLBACK"), true);
+    assert.equal(client.released, true);
+  });
+
+  test("rejects if quote expires while waiting for lock", async () => {
+    const client = createMockClient();
+    const pool = createMockPool(client);
+
+    let nowCalls = 0;
+    const deps = {
+      pool,
+      now: () => {
+        nowCalls++;
+        return nowCalls === 1 ? "2026-10-10T00:00:00Z" : "2026-10-25T00:00:00Z";
+      },
+      getQuoteById: async () => ({
+        quote_id: 1,
+        status: "ACTIVE",
+        valid_until: "2026-10-20T00:00:00Z",
+        load_id: 10,
+        truck_id: 20,
+        pickup_date: "2026-10-15",
+        delivery_date: "2026-10-16",
+      }),
+      lockBookingResources: async () => [{ quote_id: 1, load_id: 10, truck_id: 20 }],
+      getActiveBookingForLoad: async () => [],
+      getTruckBookingConflicts: async () => [],
+      createBooking: async () => ({ booking_id: 100 }),
+    };
+
+    await assert.rejects(bookQuote(1, deps), { message: /expired/ });
+    assert.ok(nowCalls >= 2);
+    assert.equal(client.queries.some((q) => q.sql === "ROLLBACK"), true);
+    assert.equal(client.released, true);
+  });
+
+  test("rejects if booking resources do not exist when acquiring lock", async () => {
+    const client = createMockClient();
+    const pool = createMockPool(client);
+
+    const deps = {
+      pool,
+      now: "2026-10-10T00:00:00Z",
+      getQuoteById: async () => ({
+        quote_id: 1,
+        status: "ACTIVE",
+        valid_until: "2026-10-20T00:00:00Z",
+        load_id: 10,
+        truck_id: 20,
+        pickup_date: "2026-10-15",
+        delivery_date: "2026-10-16",
+      }),
+      lockBookingResources: async () => [],
+    };
+
+    await assert.rejects(bookQuote(1, deps), { message: /not found/ });
     assert.equal(client.queries.some((q) => q.sql === "ROLLBACK"), true);
     assert.equal(client.released, true);
   });
