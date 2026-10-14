@@ -1,113 +1,75 @@
-# TruckLayBay — Full-Truckload Freight Allocation & Rate Engine
+# TruckLayBay
 
-TruckLayBay is an enterprise-grade full-truckload (FTL) freight rate and capacity allocation platform engineered for Indian industrial corridors. The platform pairs commercial fleet carriers with shippers through deterministic contractual rate cards, capability-based relational matching, and concurrency-safe transactional booking.
+[![Node.js](https://img.shields.io/badge/Node.js-v20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Express](https://img.shields.io/badge/Express-5.x-000000?logo=express&logoColor=white)](https://expressjs.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14+-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 
----
-
-## 1. Project Overview & Customer Booking Workflow
-
-TruckLayBay is built to solve commercial freight pricing uncertainty and capacity double-booking across India's primary freight highways. Unlike speculative broker marketplaces, TruckLayBay enforces fixed, contractual rate cards agreed with fleet carriers and binds physical vehicles to shipments through atomic database transactions.
-
-### The Customer Booking Workflow
-
-1. **Corridor & Cargo Specification**:
-   The customer selects an active freight corridor (e.g., *Indore → Mumbai*, 589 km), chooses required pickup and delivery dates, specifies total cargo weight in kilograms, and selects required vehicle/equipment capabilities (such as 32FT multi-axle container, refrigerated cold chain, or waterproof body).
-
-2. **Deterministic Rate Card & Fleet Matching**:
-   The backend executes an SQL relational matching query (`001_find_eligible_trucks.sql`) to find active fleet trucks that have capacity $\ge$ cargo weight, possess *all* requested load capabilities, and belong to an active carrier with a valid rate card covering the lane, vehicle type, and pickup date window ($[\text{valid\_from}, \text{valid\_until})$).
-
-3. **Instant Quotation Generation**:
-   The pricing service calculates an integer-safe quotation for every eligible truck with a strictly enforced 15-minute server expiration window. Base freight, the 10% configured fuel surcharge, and any accessorials are calculated in paise and stored in an immutable JSONB audit snapshot.
-
-4. **Quote Comparison & Checkout Initiation**:
-   The customer compares quotes ordered by total amount, inspecting carrier names, truck registrations, equipment specs, and itemized fare breakdowns. Expired quotes cannot proceed. Clicking "Continue to checkout" navigates to the dedicated checkout experience (`/checkout/:quoteId`).
-
-5. **Shipment Review & Demo Payment Simulation**:
-   On the checkout page, the customer reviews route, schedule, carrier, vehicle capacity, and itemized fare details. Shippers select a demo payment rail (UPI, Corporate Card, or Net Banking) and can toggle between simulated success and simulated failure. Prominent disclaimers guarantee transparency: *"Demo checkout — no real payment is processed and no money is charged."*
-
-6. **Concurrency-Safe Truck Commitment**:
-   Only after simulated payment succeeds does the application trigger the transactional booking backend (`POST /api/quotes/:quoteId/book`). If payment simulation fails, the booking endpoint is intentionally NOT called, verifying error resilience without reserving resources. When invoked, the booking service checks out a dedicated PostgreSQL client, begins a transaction, acquires pessimistic row locks (`FOR UPDATE`) on the quote, load, and truck, verifies the quote has not expired or been booked, ensures the truck has no overlapping booking conflict over the scheduled transit window, inserts a `CONFIRMED` booking, transitions the quote to `ACCEPTED`, and updates the load to `BOOKED`.
-
-7. **Bill of Lading & Booking Lookup**:
-   Upon confirmation, an official freight allocation record is presented with the assigned vehicle registration, driver details, schedule, fare breakdown, and demo payment reference, printable as a consignment record and searchable by booking ID.
+TruckLayBay is a full-truckload (FTL) freight-booking platform engineered for Indian industrial corridors. It matches shipper cargo specifications with eligible commercial carrier fleets, resolves contractual rate cards into transparent quotes, and executes concurrency-safe transactional bookings.
 
 ---
 
-## 2. Product Features & Current Scope
+## Overview & Key Features
 
-### Implemented Scope
-- **Contractual Corridor Tariffs**: Deterministic base rates agreed with commercial fleet carriers across 6 primary lanes.
-- **Relational Capability Matching**: All-capability relational set-containment matching (`NOT EXISTS` double-negation) across vehicle dimensions, body types, climate protection, and cargo handling.
-- **Paise-Precision Pricing V1**: Integer-safe monetary calculations eliminating IEEE 754 floating-point rounding errors.
-- **Configured Fuel Surcharge**: Configured 10% rate calculation snapshot stored immutably in JSONB.
-- **15-Minute Quote Expiration**: Server-enforced validity countdown preventing stale commercial commitments.
-- **Atomic Resource Locking**: Pessimistic row locking on quotes, loads, and trucks with post-lock revalidation.
-- **Transit Window Conflict Prevention**: Rejection of overlapping bookings for the same truck over scheduled dates.
-- **Demo Checkout & Payment Simulation**: Dedicated 3-step checkout (`/checkout/:quoteId`) with UPI, Card, and Net Banking simulation, deterministic latency, and toggleable success/failure modes.
-- **Full-Stack Interface**: React 19 SPA with global blue-only styling, custom SVG isometric illustration, live validation, and booking lookup.
+Commercial road freight procurement in India frequently faces volatile broker spot pricing, unverified vehicle capabilities, and capacity double-booking. TruckLayBay addresses these challenges through deterministic rate-card tariffs, relational set-containment matching, and atomic database transactions.
 
-### Intentionally Excluded Scope / Future Work
-- Authentication and role-based permissions (single-tenant / operator terminal in V1).
-- Live GPS telemetry / telematics vehicle tracking.
-- Production payment gateway processing with live banking/escrow settlement (simulated boundary in V1).
-- Dynamic surge pricing / spot-market bidding auctions.
-- Multi-leg LTL (less-than-truckload) consolidation and routing.
-- Statutory or regulatory tax certification (the 10% fuel surcharge is a configured V1 pricing assumption).
+### Key Implemented Features
+
+- **Load Creation & Validation**: Validates origin-destination freight lanes, calendar date ordering, payload weight limits, and required vehicle capabilities.
+- **Capability- & Capacity-Based Truck Eligibility**: Matches active vehicles against required cargo weight and enforces strict set-containment matching across all requested capabilities.
+- **Carrier & Temporal Rate-Card Resolution**: Resolves carrier tariffs based on corridor, vehicle classification, and half-open contract validity windows.
+- **Deterministic Freight Pricing & Quote Expiration**: Computes integer-safe paise amounts with a configured 10% fuel surcharge, itemized accessorials, and a server-controlled 15-minute expiration countdown.
+- **Quote Comparison**: Presents multi-carrier fare comparisons ordered by total cost, complete with itemized price breakdowns and vehicle specifications.
+- **Transactional Booking & Conflict Handling**: Guarantees atomic commitment via PostgreSQL pessimistic row locks (`FOR UPDATE`), post-lock revalidation, and rejection of overlapping transit schedules.
+- **Booking Retrieval & Confirmation**: Provides comprehensive booking records with allocated vehicle registration, driver details, schedule, route information, and billing details.
+- **React Customer Interface with Simulated Checkout**: Interactive single-page application with corridor selection, live quote generation, and simulated payment workflows across multiple payment rails.
 
 ---
 
-## 3. Technology Stack
+## How It Works
 
-- **Runtime**: Node.js (v20+ / v24 recommended, ES Modules)
-- **Backend Framework**: Express 5
-- **Database Driver**: `pg` (node-postgres) with connection pooling (`pg-pool`)
-- **Database**: PostgreSQL 14+
-- **Frontend Framework**: React 19
-- **Build Tool**: Vite 8
-- **Styling**: Tailwind CSS v4 (`@tailwindcss/vite`) with custom brand theme tokens
-- **Routing**: React Router 7 (`react-router-dom`)
-- **HTTP Client**: Axios
-- **Iconography**: Lucide React
-- **Test Framework**: Node.js built-in test runner (`node --test`) with `assert`
+Shippers progress through a structured six-stage booking workflow:
 
----
+**Create a load → Match eligible trucks → Generate quotes → Compare prices → Demo checkout → Confirm booking**
 
-## 4. Architecture & Request Flow
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Frontend Client                            │
-│  React 19 • Vite 8 • Tailwind CSS v4 • React Router 7 • Axios   │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │ HTTP JSON (Proxied via Vite /api)
-┌────────────────────────────────▼────────────────────────────────┐
-│                   Express 5 REST API Layer                      │
-│   Lane & Capability Routes • Load Routes • Booking Routes       │
-└────────────────┬───────────────────────────────┬────────────────┘
-                 │                               │
-┌────────────────▼──────────────┐ ┌──────────────▼────────────────┐
-│     Quote & Pricing Engine    │ │    Booking Service Engine     │
-│  Paise-integer calculation    │ │  Dedicated client checkout    │
-│  10% fuel surcharge index     │ │  Pessimistic row locking      │
-│  15m server quote expiration  │ │  Double-booking exclusion     │
-└────────────────┬──────────────┘ └──────────────┬────────────────┘
-                 │                               │
-┌────────────────▼───────────────────────────────▼────────────────┐
-│               PostgreSQL Connection Pool (pg.Pool)              │
-│       Parametric SQL Queries (001–020) • Transaction Control    │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │
-┌────────────────────────────────▼────────────────────────────────┐
-│                   PostgreSQL Database Server                    │
-│   11 Normalized Tables • Relational Foreign Keys • Row Locks    │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    A["Create Load"] --> B["Match Trucks"]
+    B --> C["Generate Quotes"]
+    C --> D["Compare Prices"]
+    D --> E["Demo Checkout"]
+    E --> F["Confirm Booking"]
 ```
 
+> **Simulated Payment Notice**: The checkout process simulates payment authorization across mock payment rails (UPI, Corporate Card, Net Banking) for demonstration and testing purposes. No real money is processed or charged.
+
 ---
 
-## 5. Relational Data Model & Entity Roles
+## Tech Stack
 
-The database schema is strictly normalized across 11 core tables without denormalized foreign key duplication:
+| Layer | Technologies | Purpose |
+|---|---|---|
+| **Frontend** | React 19, Vite 8, React Router 7, Axios | Customer booking interface and client-side routing |
+| **Styling** | Tailwind CSS v4, Lucide React | Modern responsive design and iconography |
+| **Backend** | Node.js (ESM), Express 5 | RESTful API, validation layer, and domain services |
+| **Database** | PostgreSQL 14+, `pg` (node-postgres) | Relational persistence, connection pooling, and row locks |
+| **Testing** | Node.js Test Runner (`node --test`), `assert/strict` | Automated unit, integration, and concurrency regression suites |
+
+---
+
+## Architecture & Data Model
+
+The backend employs a layered separation of concerns to keep business logic, data access, and database queries modular and testable:
+
+- **Routes & Controllers** (`src/routes`, `src/controllers`): Handle HTTP request routing, input parsing, status dispatching, and centralized error normalization via `AppError`.
+- **Services** (`src/services`): Coordinate core business logic, including load creation, quote calculation, expiration lifecycles, and transactional booking execution.
+- **Repositories** (`src/repositories`): Encapsulate data access operations, passing PostgreSQL pool connections or dedicated transactional clients.
+- **Parametric SQL Queries** (`db/queries`): Modular, auditable SQL statements (`001`–`020`) separating complex relational queries from application code.
+- **PostgreSQL Database**: Relational engine enforcing domain constraints, cascade rules, and ACID transactional guarantees.
+
+### Entity-Relationship Diagram
 
 ```mermaid
 erDiagram
@@ -115,284 +77,146 @@ erDiagram
     CARRIERS ||--o{ DRIVERS : employs
     CARRIERS ||--o{ RATE_CARDS : establishes
     LANES ||--o{ RATE_CARDS : covers
-    CAPABILITIES ||--o{ RATE_CARDS : prices
+    CAPABILITIES ||--o{ RATE_CARDS : classifies
     TRUCKS ||--o{ TRUCK_CAPABILITIES : possesses
-    CAPABILITIES ||--o{ TRUCK_CAPABILITIES : describes
+    CAPABILITIES ||--o{ TRUCK_CAPABILITIES : defines
     LANES ||--o{ LOADS : spans
-    LOADS ||--o{ LOAD_CAPABILITIES : demands
-    CAPABILITIES ||--o{ LOAD_CAPABILITIES : satisfies
-    LOADS ||--o{ QUOTES : generated_for
-    CARRIERS ||--o{ QUOTES : issued_by
-    TRUCKS ||--o{ QUOTES : allocated_truck
-    RATE_CARDS ||--o{ QUOTES : referenced_rate
-    QUOTES ||--o| BOOKINGS : committed_into
+    LOADS ||--o{ LOAD_CAPABILITIES : requires
+    CAPABILITIES ||--o{ LOAD_CAPABILITIES : fulfills
+    LOADS ||--o{ QUOTES : receives
+    CARRIERS ||--o{ QUOTES : issues
+    TRUCKS ||--o{ QUOTES : assigns
+    RATE_CARDS ||--o{ QUOTES : applies
+    QUOTES ||--o| BOOKINGS : confirms
 ```
 
-### Entity Roles & Database Schema
+### Relational Schema Design
 
-1. **`carriers`**: Fleet operating companies responsible for commercial transport. Physical deletion cascades into owned trucks and rate cards, but is prevented by `RESTRICT` foreign keys if referenced by historical quotes.
-2. **`drivers`**: Commercial drivers employed by carriers (`driver_id`, `carrier_id` FK CASCADE, `license_number` UNIQUE, `license_valid_until`). Distinct entities associated with carriers.
-3. **`capabilities`**: Shared catalog of 9 standardized equipment features across 4 categories:
-   - `VEHICLE_TYPE`: `20FT`, `32FT` (used as the primary rate card pricing dimension).
-   - `BODY_TYPE`: `CONTAINER`, `OPEN_BODY`.
-   - `FEATURE`: `WATERPROOF`, `REFRIGERATED`.
-   - `FREIGHT_TYPE`: `GENERAL`, `FRAGILE`, `PERISHABLE`.
-4. **`trucks`**: Physical vehicles (`registration_number` UNIQUE, `capacity_kg`, `status` ACTIVE/MAINTENANCE/INACTIVE, `model`, `permit_number`, `insurance_valid_until`).
-5. **`truck_capabilities`**: Composite PK `(truck_id, capability_id)` assigning capabilities to trucks.
-6. **`lanes`**: Origin-destination city pairs (`origin_city`, `destination_city` UNIQUE, `distance_km`, `status`).
-7. **`rate_cards`**: Contractual base freight tariffs for a carrier, lane, and vehicle capability (`valid_from`, `valid_until` half-open interval, `base_rate`).
-8. **`loads`**: Customer freight orders (`lane_id`, `pickup_date`, `delivery_date`, `weight_kg`, `status` DRAFT/OPEN/QUOTED/BOOKED/IN_TRANSIT/COMPLETED/CANCELLED).
-9. **`load_capabilities`**: Composite PK `(load_id, capability_id)` specifying mandatory requirements for a load.
-10. **`quotes`**: Fixed-price commercial quote records binding a load, carrier, truck, and rate card with a server-controlled `valid_until` timestamp and JSONB calculation snapshot.
-11. **`bookings`**: Acceptance of a quote (`quote_id` UNIQUE FK, `status` CONFIRMED). The quote remains the single source of truth for load, carrier, truck, and rate card.
+- **`carriers`**: Fleet operating companies with commercial details (GST number, contact info) and operational status.
+- **`drivers`**: Commercial drivers employed by carriers with license numbers and expiry tracking.
+- **`capabilities`**: Standardized catalog spanning vehicle types (`20FT`, `32FT`), body types (`CONTAINER`, `OPEN_BODY`), features (`WATERPROOF`, `REFRIGERATED`), and freight types (`GENERAL`, `FRAGILE`, `PERISHABLE`).
+- **`trucks`**: Physical vehicles linked to carriers, specifying payload capacity (`capacity_kg`), registration numbers, and active status.
+- **`lanes`**: Origin-destination city pairs defining operational freight corridors and distances.
+- **`rate_cards`**: Contractual base tariffs per carrier, lane, and vehicle capability over specified calendar intervals.
+- **`loads`**: Shipper freight requests defining lane, cargo weight, pickup and delivery dates, and required capabilities.
+- **`quotes`**: Time-limited commercial offers binding a load to a carrier, truck, and rate card with an immutable calculation snapshot.
+- **`bookings`**: Confirmation record referencing an accepted quote as the single source of truth for shipment and fleet details.
 
 ---
 
-## 6. Truck Eligibility & Relational Matching
+## Engineering Highlights
 
-Candidate trucks are identified via parameterized SQL (`db/queries/001_find_eligible_trucks.sql`):
-1. **Payload Capacity & Status Filter**: `t.status = 'ACTIVE'` and `t.capacity_kg >= target_load.weight_kg`.
-2. **Relational Set Containment**: The truck must possess **every single capability** required by the load using double-negation:
-   ```sql
-   AND NOT EXISTS (
-       SELECT 1
-       FROM load_capabilities lc
-       WHERE lc.load_id = tl.load_id
-         AND NOT EXISTS (
-             SELECT 1
-             FROM truck_capabilities tc
-             WHERE tc.truck_id = t.truck_id
-               AND tc.capability_id = lc.capability_id
-         )
-   )
-   ```
-3. **Carrier & Lane Alignment**: Carrier `status = 'ACTIVE'` on the load's `lane_id`.
-4. **Half-Open Temporal Validity**:
-   ```sql
-   rc.valid_from <= tl.pickup_date AND tl.pickup_date < rc.valid_until
-   ```
-5. **Vehicle Dimension Alignment**: The rate card's `vehicle_capability_id` must match the truck's `VEHICLE_TYPE` capability (`20FT` or `32FT`).
+### 1. Capability- & Capacity-Based Truck Eligibility
+Eligible trucks must satisfy both payload requirements (`capacity_kg >= weight_kg`) and relational set containment across all required load capabilities using SQL double negation (`NOT EXISTS`). This ensures only vehicles physically equipped to handle the shipment are matched.
+
+### 2. Temporal Rate Cards
+Rate cards define contractual tariffs over half-open validity intervals (`valid_from <= pickup_date < valid_until`). This standard convention allows adjacent contract periods to transition cleanly without billing gaps or overlapping ambiguity.
+
+### 3. Deterministic Pricing
+All monetary amounts are calculated and stored in integer paise (`1 INR = 100 paise`), eliminating IEEE 754 floating-point precision errors. Calculations apply the base rate, a configured 10% fuel surcharge, and any applicable accessorial charges before formatting the total.
+
+### 4. Quote Integrity & Expiration
+Every generated quote persists an immutable JSONB calculation snapshot capturing inputs, rates, and formulas at the time of creation. Quotes enforce a strict server-controlled 15-minute expiration countdown, preventing stale commercial pricing and ignoring client-side tampering.
+
+### 5. Concurrency Safety & Booking Correctness
+The booking service runs within an explicit PostgreSQL transaction on a dedicated client connection. It executes pessimistic row-level locks (`FOR UPDATE`) across the quote, load, and truck simultaneously. Under the acquired lock, the service revalidates quote status and expiration, checks for overlapping truck transit windows (`pickup_date <= requested_delivery` and `delivery_date >= requested_pickup`), conditionally commits state transitions (`quotes` → `ACCEPTED`, `loads` → `BOOKED`), and returns HTTP 409 Conflict upon any concurrency race or resource collision.
+
+### 6. Automated Testing Suite
+The project maintains automated test suites covering pricing arithmetic, input validation, REST API routes, transactional rollbacks, and concurrent race conditions (including simultaneous booking attempts, expired quote rejections, and overlapping schedule conflicts).
 
 ---
 
-## 7. Deterministic Pricing Engine V1
+## API Reference
 
-All pricing calculations are performed in `src/services/pricingService.js` using integer paise arithmetic (`1 INR = 100 paise`):
+All requests and responses use JSON format. Error responses follow the standard format `{ "error": "message" }`.
 
-### Mathematical Model
-$$\text{basePaise} = \text{round}(\text{baseRate} \times 100)$$
-$$\text{fuelPaise} = \text{round}(\text{basePaise} \times 0.10)$$
-$$\text{accessorialPaise} = \sum \text{round}(\text{charge}_i \times 100)$$
-$$\text{totalPaise} = \text{basePaise} + \text{fuelPaise} + \text{accessorialPaise}$$
-$$\text{totalAmount} = \frac{\text{totalPaise}}{100}$$
-
-- **Fuel Surcharge**: Fixed 10% configured assumption of base freight (`Math.round(baseRate * 0.10)`).
-- **Accessorial Charges**: Explicitly itemized (refrigeration, special handling).
-- **Audit Snapshot**: The full calculation input, formula, and paise-accurate components are stored in `quotes.calculation_snapshot`.
-
----
-
-## 8. Concurrency Safety & Booking Transactions
-
-To guarantee that a truck cannot be double-booked across overlapping shipment dates, `src/services/bookingService.js` implements strict transactional boundaries:
-
-### 1. Dedicated Client Connection
-The service checks out a dedicated client from the pool (`const client = await pool.connect()`) and executes `BEGIN`.
-
-### 2. Pessimistic Row-Level Locking (`011_lock_booking_resources.sql`)
-The quote, load, and truck rows are locked simultaneously using `FOR UPDATE`:
-```sql
-WITH locked_quote AS (
-    SELECT q.quote_id, q.load_id, q.truck_id
-    FROM quotes q
-    WHERE q.quote_id = $1
-    FOR UPDATE
-),
-locked_load AS (
-    SELECT l.load_id
-    FROM loads l
-    JOIN locked_quote lq ON lq.load_id = l.load_id
-    FOR UPDATE
-),
-locked_truck AS (
-    SELECT t.truck_id
-    FROM trucks t
-    JOIN locked_quote lq ON lq.truck_id = t.truck_id
-    FOR UPDATE
-)
-SELECT lq.quote_id, lq.load_id, lq.truck_id
-FROM locked_quote lq
-JOIN locked_load ll ON ll.load_id = lq.load_id
-JOIN locked_truck lt ON lt.truck_id = lq.truck_id;
-```
-
-### 3. Post-Lock Re-Read & Re-Validation
-Because competing transactions queue while waiting for row locks, the service re-reads the quote under the acquired lock and re-verifies:
-- **Quote Status**: Must still be `'ACTIVE'` (aborts with `409 Conflict` if already accepted/rejected).
-- **Expiration Check**: Verified against `CURRENT_TIMESTAMP` (aborts with `409 Conflict` if the 15-minute window expired while waiting for the lock).
-- **Delivery Date**: Verified that delivery date is non-null.
-
-### 4. Overlapping Transit Window Conflict Query (`008_get_truck_booking_conflicts.sql`)
-The transaction checks whether the assigned truck has an active booking on an overlapping calendar interval:
-```sql
-SELECT b.booking_id
-FROM bookings b
-JOIN quotes q ON q.quote_id = b.quote_id
-JOIN loads l ON l.load_id = q.load_id
-WHERE q.truck_id = $1
-  AND b.status IN ('CONFIRMED', 'IN_TRANSIT')
-  AND l.pickup_date <= $3
-  AND l.delivery_date >= $2;
-```
-If an active booking exists within that date range, the transaction rolls back and returns `409 Conflict`.
-
-### 5. Atomic State Commit
-If valid:
-1. `bookings` record created (`status = 'CONFIRMED'`).
-2. `quotes.status` updated to `'ACCEPTED'`.
-3. `loads.status` updated to `'BOOKED'`.
-4. Transaction committed via `COMMIT` and client released in a `finally` block.
-
-### Tested Concurrency Scenarios (`src/routes/concurrency.test.js`)
-- **Race 1**: Two concurrent requests for the exact same quote $\rightarrow$ exactly one returns `201 Created`, the second returns `409 Conflict`.
-- **Race 2**: Two concurrent requests booking different quotes on the same load $\rightarrow$ exactly one succeeds; the second is rejected because the load is already booked.
-- **Race 3**: Sequential booking of an already accepted quote $\rightarrow$ returns `409 Conflict` (not `500`).
-- **Race 4**: Booking an expired quote $\rightarrow$ returns `409 Conflict` and preserves `loads.status` in `OPEN`/`QUOTED`.
-- **Race 5**: Two different loads attempting to book the same truck on overlapping dates $\rightarrow$ first succeeds, second receives `409 Conflict`.
-- **Race 6**: Five simultaneous concurrent booking attempts for the same quote $\rightarrow$ exactly one succeeds with `201 Created`, all others receive `409 Conflict`.
-
----
-
-## 9. REST API Reference
-
-All requests and responses use JSON. Client error responses return `{ error: string }`.
-
-| Method | Endpoint | Request Body | Response Payload | Status Codes |
+| Method | Endpoint | Request Body / Parameters | Description | Status Codes |
 |---|---|---|---|---|
-| `GET` | `/api/lanes` | None | Array of active lanes | `200`, `500` |
-| `GET` | `/api/capabilities` | None | Array of capability catalog records | `200`, `500` |
-| `POST` | `/api/loads` | `{ laneId, pickupDate, deliveryDate, weightKg, capabilityIds }` | Created load object with capabilities | `201`, `400`, `500` |
-| `GET` | `/api/loads/:loadId` | None | Load object with joined capabilities | `200`, `400`, `404`, `500` |
-| `POST` | `/api/loads/:loadId/quotes` | `{ validUntil?, baseRate? }` (overrides ignored) | Array of calculated quotes (15m validity) | `201`, `400`, `404`, `500` |
-| `GET` | `/api/loads/:loadId/quotes` | None | Array of quotes with carrier & truck info | `200`, `400`, `404`, `500` |
-| `GET` | `/api/quotes/:quoteId` | None | Joined quote with calculation snapshot | `200`, `400`, `404`, `500` |
-| `POST` | `/api/quotes/:quoteId/book` | None | Confirmed booking object with joined details | `201`, `400`, `404`, `409`, `500` |
-| `GET` | `/api/bookings/:bookingId` | None | Full booking record with vehicle & schedule | `200`, `400`, `404`, `500` |
+| `GET` | `/api/health` | None | Service health check | `200` |
+| `GET` | `/api/lanes` | None | Returns active freight corridors | `200`, `500` |
+| `GET` | `/api/capabilities` | None | Returns equipment and cargo capability catalog | `200`, `500` |
+| `POST` | `/api/loads` | `{ laneId, pickupDate, deliveryDate, weightKg, capabilityIds }` | Creates and validates a new load | `201`, `400`, `500` |
+| `GET` | `/api/loads/:loadId` | None | Retrieves load details with required capabilities | `200`, `400`, `404`, `500` |
+| `POST` | `/api/loads/:loadId/quotes` | None | Generates 15-minute quotes for all eligible trucks | `201`, `400`, `404`, `500` |
+| `GET` | `/api/loads/:loadId/quotes` | None | Lists available quotes for a specific load | `200`, `400`, `404`, `500` |
+| `GET` | `/api/quotes/:quoteId` | None | Retrieves quote with calculation snapshot | `200`, `400`, `404`, `500` |
+| `POST` | `/api/quotes/:quoteId/book` | None | Atomically locks resources and confirms booking | `201`, `400`, `404`, `409`, `500` |
+| `GET` | `/api/bookings/:bookingId` | None | Retrieves confirmed booking and dispatch details | `200`, `400`, `404`, `500` |
 
 ---
 
-## 10. Demo Checkout & Simulated Payment Architecture
+## Getting Started
 
-TruckLayBay includes a dedicated, frontend checkout experience at `/checkout/:quoteId` designed to demonstrate freight booking fulfillment without requiring live banking or payment gateway credentials.
+### Prerequisites
 
-### 1. Simulated Payment Boundary & Transparency
-- **Explicit Demo Disclaimer**: Every checkout screen prominently communicates: *"Demo checkout — no real payment is processed and no money is charged."*
-- **No Mock Gateway Deception**: The platform never presents simulated transaction IDs as authentic banking gateway receipts or claims real currency was moved. All payment references are explicitly prefixed (e.g. `DEMO-PAY-XXX`).
-- **Simulated Payment Rails**:
-  - **UPI Demo**: Virtual Payment Address simulation with instant validation.
-  - **Corporate Card Demo**: Commercial debit/credit card simulation with cardholder and expiry validation.
-  - **Net Banking Demo**: Commercial internet banking simulation across primary Indian corporate banks (HDFC, ICICI, SBI, Axis, Kotak).
+- **Node.js**: v20+ (ES Modules support required)
+- **PostgreSQL**: v14+ running locally or via Docker
 
-### 2. Transactional Booking Execution Hook
-The simulated payment acts as a strict guardrail before the backend booking API is invoked:
-1. **Shipment Review**: The shipper reviews corridor, schedule, carrier, vehicle capacity, and itemized fare. Expired quotes cannot advance.
-2. **Payment Simulation**:
-   - The user selects a demo payment method and triggers payment simulation.
-   - **Success Mode (Default)**: `processDemoPayment()` simulates an approved transaction after realistic latency (900–1000ms). Only upon approved simulation does the client invoke `POST /api/quotes/:quoteId/book`.
-   - **Failure Mode (Test Sandbox)**: If the user toggles "Simulate Failure", `processDemoPayment()` simulates an immediate bank gateway decline. The booking endpoint is **intentionally NOT invoked**, verifying that no database row locks are held and no booking records are created when payment is declined.
-3. **Dual Confirmation**: Upon successful booking, the confirmation screen clearly displays both operational booking reference information and explicit sandbox confirmation:
-   - *"Booking confirmed in TruckLayBay demo environment"*
-   - *"Demo payment simulation successful — no real payment processed"*
+### 1. Environment Configuration
 
-### 3. Production Gateway Integration Roadmap
-To transition from the demo payment simulation to production payment processing:
-- **Webhook Verification**: Integrate server-to-server signed webhook handlers (e.g., Razorpay HMAC SHA256 signature verification) to listen for asynchronous `payment.captured` events.
-- **Idempotency Keys**: Require unique payment idempotency keys on `POST /api/quotes/:quoteId/book` to prevent duplicate authorizations.
-- **Two-Step Escrow / Authorization-and-Capture**: Authorize payment upon quote acceptance, place funds in escrow, and capture payout upon electronic Proof of Delivery (e-POD) verification.
-- **Carrier Settlement Engine**: Automate split payments deducting marketplace platform fees and remitting contractual base freight directly to carrier nodal accounts.
-
----
-
-## 11. Fleet Network & Corridors
-
-The platform includes seed data modeling **37 commercial vehicles** across **6 transport companies** covering **6 industrial corridors** with **45 active rate cards**:
-
-### Operating Corridors
-1. **Indore ⇄ Mumbai** (589 km) — NH 52 industrial linehaul
-2. **Indore ⇄ Delhi** (793 km) — Western dedicated freight route
-3. **Bhopal ⇄ Mumbai** (780 km) — Central India manufacturing corridor
-4. **Mumbai ⇄ Pune** (150 km) — Expressway short haul & port feeder
-5. **Indore ⇄ Pune** (640 km) — Automotive corridor
-6. **Bhopal ⇄ Delhi** (697 km) — North-South connection
-
-### Carrier Fleet Operators
-- **Malwa Express Logistics Pvt Ltd** (Indore, MP) — 8 trucks (Container, reefer, open body)
-- **Deccan Freight Carriers** (Pune, MH) — 7 trucks (Multi-axle 32FT, heavy flatbed)
-- **Capital Road Lines** (New Delhi, DL) — 7 trucks (Express linehaul & 20FT container)
-- **Khandwa Roadlines Pvt Ltd** (Indore, MP) — 5 trucks (Industrial container & reefer)
-- **Vindhya Freight Logistics** (Bhopal, MP) — 5 trucks (Central India reefer & flatbed)
-- **Sahyadri Intercity Cargo** (Navi Mumbai, MH) — 5 trucks (Container & expressway transit)
-
----
-
-## 12. Local Development & Verification Guide
-
-### 1. Prerequisites
-- **Node.js**: v20+ (v24 recommended)
-- **PostgreSQL**: v14+ running locally or in Docker
-
-### 2. Environment Configuration
 Create a `.env` file in the project root:
+
 ```env
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/trucklaybay
+NODE_ENV=development
 PORT=3000
+DATABASE_URL=postgresql://postgres:password@localhost:5432/trucklaybay
 ```
 
-### 3. Database Migration & Seed
-```powershell
-# 1. Apply initial schema migration
+### 2. Database Migration
+
+Initialize the relational schema, tables, and indexes:
+
+```bash
 psql -d trucklaybay -f db/migrations/001_initial_schema.sql
-
-# 2. Seed baseline catalog and test loads
-psql -d trucklaybay -f db/seeds/001_initial_data.sql
-
-# 3. Seed expanded 37-truck fleet across all corridors (idempotent, safe to run repeatedly)
-node --env-file=.env src/db/runSeedExpanded.js
 ```
 
-### 4. Running Verification Checks
-```powershell
-# Run backend test suite (79 tests)
+### 3. Backend Setup & Startup
+
+Install backend dependencies and start the Express API:
+
+```bash
+npm install
+
+# Start development server with file watch
+npm run dev
+
+# Or start in production mode:
+# npm start
+```
+
+The backend API listens on `http://localhost:3000`.
+
+### 4. Frontend Setup & Startup (Separate Terminal)
+
+In a separate terminal, install client dependencies and launch the Vite development server:
+
+```bash
+cd client
+npm install
+npm run dev
+```
+
+The frontend runs at `http://localhost:5173` and automatically proxies `/api` requests to the Express backend.
+
+### 5. Running Tests & Production Build
+
+```bash
+# Run backend test suite (unit, integration, and concurrency tests)
 npm test
 
-# Run repository invariant checks
-npm run repo:check
-npm run rate:check
-npm run quote:check
-npm run book:check
-
-# Verify fleet eligibility coverage & quote generation across 6 customer profiles
-node --env-file=.env src/db/verifyFleetCoverage.js
-```
-
-### 5. Running the Application (Separate Terminals)
-
-**Terminal 1 — Express Backend API**:
-```powershell
-# Run production backend
-npm start
-
-# Or development watch mode:
-npm run dev
-# Express API listens on http://localhost:3000
-```
-
-**Terminal 2 — React Frontend**:
-```powershell
+# Build client production bundle
 cd client
-npm run dev
-# Vite dev server runs at http://localhost:5173 and proxies /api to http://localhost:3000
-
-# Build frontend production bundle
 npm run build
 ```
+
+---
+
+## Scope & Limitations
+
+TruckLayBay focuses on deterministic rate calculation and reliable booking execution. Certain real-world logistics capabilities are outside the current project scope:
+
+- **Simulated Payment**: The checkout workflow models payment rail selection (UPI, Corporate Card, Net Banking) and failure handling as a demonstration sandbox. It does not integrate with external payment gateways or process actual funds.
+- **Authentication & RBAC**: Implemented as a single-tenant operations platform without user accounts or role-based permissions.
+- **Fleet Telematics**: Fleet tracking and live GPS telemetry are not integrated.
+- **Regulatory Tax Certification**: The 10% fuel surcharge is a configured platform parameter rather than a statutory taxation calculation. Split invoicing and automated e-way bill generation are excluded.
+- **Consolidation**: The platform models dedicated point-to-point full-truckload (FTL) transport and does not support multi-stop less-than-truckload (LTL) consolidation.
