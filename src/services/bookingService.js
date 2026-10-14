@@ -28,6 +28,49 @@ function toDateString(val) {
   return typeof val === "string" ? val.slice(0, 10) : String(val);
 }
 
+function validateQuote(quote, quoteId, now) {
+  if (!quote) {
+    throw new NotFoundError(`Quote ${quoteId} not found.`);
+  }
+
+  if (quote.status !== "ACTIVE") {
+    throw new ConflictError(
+      `Quote ${quoteId} is not ACTIVE (status: ${quote.status}).`,
+      `Quote ${quoteId} is not active.`,
+    );
+  }
+
+  const validUntilVal = quote.quote_valid_until ?? quote.valid_until;
+  if (!validUntilVal) {
+    throw new ConflictError(
+      `Quote ${quoteId} has invalid valid_until.`,
+      `Quote ${quoteId} has invalid valid_until.`,
+    );
+  }
+
+  const validUntil = new Date(validUntilVal);
+  if (Number.isNaN(validUntil.getTime())) {
+    throw new ConflictError(
+      `Quote ${quoteId} has invalid valid_until.`,
+      `Quote ${quoteId} has invalid valid_until.`,
+    );
+  }
+
+  if (validUntil <= now) {
+    throw new ConflictError(
+      `Quote ${quoteId} has expired.`,
+      `Quote ${quoteId} has expired.`,
+    );
+  }
+
+  if (!quote.delivery_date) {
+    throw new BadRequestError(
+      `Load ${quote.load_id} does not have a delivery_date.`,
+      `Load does not have a delivery date.`,
+    );
+  }
+}
+
 export async function bookQuote(quoteId, deps = {}) {
   if (!Number.isInteger(quoteId) || quoteId <= 0) {
     throw new BadRequestError("quoteId must be a positive integer.");
@@ -43,45 +86,40 @@ export async function bookQuote(quoteId, deps = {}) {
   const updateQuoteStatus = deps.updateQuoteStatus ?? defaultUpdateQuoteStatus;
   const updateLoadStatus = deps.updateLoadStatus ?? defaultUpdateLoadStatus;
 
+  const getNow = () =>
+    typeof deps.now === "function"
+      ? new Date(deps.now())
+      : deps.now
+        ? new Date(deps.now)
+        : new Date();
+
   const client = await currentPool.connect();
   let createdBookingId = null;
 
   try {
     await client.query("BEGIN");
 
+    // Preliminary validation before lock acquisition
+    const preliminaryQuote = await getQuoteById(quoteId, client);
+    validateQuote(preliminaryQuote, quoteId, getNow());
+
+    // Lock the quote, its load, and its truck atomically
+    const lockedResources = await lockBookingResources(quoteId, client);
+    if (
+      lockedResources !== undefined &&
+      (!lockedResources || (Array.isArray(lockedResources) && lockedResources.length === 0))
+    ) {
+      throw new NotFoundError(`Booking resources for quote ${quoteId} not found.`);
+    }
+
+    // Re-read quote on the same client under the acquired lock
     const quote = await getQuoteById(quoteId, client);
 
-    if (!quote) {
-      throw new NotFoundError(`Quote ${quoteId} not found.`);
-    }
-
-    if (quote.status !== "ACTIVE") {
-      throw new ConflictError(`Quote ${quoteId} is not ACTIVE (status: ${quote.status}).`, `Quote ${quoteId} is not active.`);
-    }
-
-    const validUntilVal = quote.quote_valid_until ?? quote.valid_until;
-    if (!validUntilVal) {
-      throw new ConflictError(`Quote ${quoteId} has invalid valid_until.`, `Quote ${quoteId} has invalid valid_until.`);
-    }
-
-    const validUntil = new Date(validUntilVal);
-    if (Number.isNaN(validUntil.getTime())) {
-      throw new ConflictError(`Quote ${quoteId} has invalid valid_until.`, `Quote ${quoteId} has invalid valid_until.`);
-    }
-
-    const now = deps.now ? new Date(deps.now) : new Date();
-    if (validUntil <= now) {
-      throw new ConflictError(`Quote ${quoteId} has expired.`, `Quote ${quoteId} has expired.`);
-    }
-
-    if (!quote.delivery_date) {
-      throw new BadRequestError(`Load ${quote.load_id} does not have a delivery_date.`, `Load does not have a delivery date.`);
-    }
+    // Revalidate quote status, expiration against current time, and delivery date
+    validateQuote(quote, quoteId, getNow());
 
     const loadId = Number(quote.load_id);
     const truckId = Number(quote.truck_id);
-
-    await lockBookingResources(loadId, truckId, client);
 
     const activeBookings = await getActiveBookingForLoad(loadId, client);
     if (activeBookings && activeBookings.length > 0) {
@@ -106,12 +144,18 @@ export async function bookQuote(quoteId, deps = {}) {
 
     const updatedQuote = await updateQuoteStatus(quoteId, "ACCEPTED", client);
     if (!updatedQuote) {
-      throw new Error(`Failed to update quote ${quoteId} status to ACCEPTED.`);
+      throw new ConflictError(
+        `Quote ${quoteId} was modified concurrently and could not be accepted.`,
+        `Quote ${quoteId} is no longer in an acceptable state.`,
+      );
     }
 
     const updatedLoad = await updateLoadStatus(loadId, "BOOKED", client);
     if (!updatedLoad) {
-      throw new Error(`Failed to update load ${loadId} status to BOOKED.`);
+      throw new ConflictError(
+        `Load ${loadId} was modified concurrently and could not be marked BOOKED.`,
+        `Load ${loadId} is no longer in a bookable state.`,
+      );
     }
 
     await client.query("COMMIT");
@@ -122,5 +166,10 @@ export async function bookQuote(quoteId, deps = {}) {
     client.release();
   }
 
-  return await getBookingById(Number(createdBookingId));
+  // createdBookingId is only set after a successful COMMIT.  Guard against the
+  // impossible-but-defensive case of a null ID reaching getBookingById.
+  if (!createdBookingId) {
+    throw new Error("Booking committed but booking_id was not returned by createBooking.");
+  }
+  return await getBookingById(createdBookingId);
 }

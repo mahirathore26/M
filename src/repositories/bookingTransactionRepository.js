@@ -17,12 +17,11 @@ function requirePositiveInt(value, name) {
   }
 }
 
-export async function lockBookingResources(loadId, truckId, db = pool) {
-  requirePositiveInt(loadId, "loadId");
-  requirePositiveInt(truckId, "truckId");
+export async function lockBookingResources(quoteId, db = pool) {
+  requirePositiveInt(quoteId, "quoteId");
 
   const sql = await fs.readFile(SQL_LOCK_BOOKING_RESOURCES, "utf8");
-  const result = await db.query(sql, [loadId, truckId]);
+  const result = await db.query(sql, [quoteId]);
   return result.rows;
 }
 
