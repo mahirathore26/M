@@ -66,6 +66,23 @@ describe("REST API Integration Tests", () => {
     });
   });
 
+  describe("1b. GET /api/capabilities", () => {
+    it("returns 200 and a list of available capabilities", async () => {
+      const { status, body } = await request(server, "GET", "/api/capabilities");
+      assert.equal(status, 200);
+      assert.ok(Array.isArray(body));
+      assert.ok(body.length > 0);
+      const cap = body[0];
+      assert.ok(cap.capability_id);
+      assert.ok(cap.name);
+      assert.ok(cap.category);
+      assert.ok(
+        ["VEHICLE_TYPE", "BODY_TYPE", "FEATURE", "FREIGHT_TYPE"].includes(cap.category),
+        `Unexpected category: ${cap.category}`
+      );
+    });
+  });
+
   describe("2. POST /api/loads", () => {
     it("rejects invalid laneId with 400", async () => {
       const { status, body } = await request(server, "POST", "/api/loads", {

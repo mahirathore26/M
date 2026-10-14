@@ -8,6 +8,13 @@ const __dirname = path.dirname(__filename);
 const SQL_DIR = path.resolve(__dirname, "../../db/queries");
 
 const SQL_GET_CAPABILITIES_BY_IDS = path.join(SQL_DIR, "019_get_capabilities_by_ids.sql");
+const SQL_GET_ALL_CAPABILITIES = path.join(SQL_DIR, "020_get_all_capabilities.sql");
+
+export async function getAllCapabilities(db = pool) {
+  const sql = await fs.readFile(SQL_GET_ALL_CAPABILITIES, "utf8");
+  const result = await db.query(sql);
+  return result.rows;
+}
 
 export async function getCapabilitiesByIds(capabilityIds, db = pool) {
   if (!Array.isArray(capabilityIds)) {

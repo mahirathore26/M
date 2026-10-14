@@ -3,6 +3,7 @@ import laneRoutes from './routes/laneRoutes.js';
 import loadRoutes from './routes/loadRoutes.js';
 import quoteRoutes from './routes/quoteRoutes.js';
 import bookingRoutes from './routes/bookingRoutes.js';
+import capabilityRoutes from './routes/capabilityRoutes.js';
 
 const app = express();
 
@@ -13,6 +14,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/lanes', laneRoutes);
+app.use('/api/capabilities', capabilityRoutes);
 app.use('/api/loads', loadRoutes);
 app.use('/api/quotes', quoteRoutes);
 app.use('/api/bookings', bookingRoutes);
